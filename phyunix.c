@@ -34,6 +34,14 @@
 #endif
 #endif
 
+#if WIN32
+#define OPEN_FLAGS O_RDONLY|O_BINARY
+#define OPEN_RW_FLAGS O_RDWR|O_BINARY
+#else
+#define OPEN_FLAGS O_RDONLY
+#define OPEN_RW_FLAGS O_RDWR
+#endif
+
 unsigned init_count = 0;
 unsigned read_count = 0;
 unsigned write_count = 0;
@@ -93,7 +101,7 @@ void scache_write(unsigned block,unsigned length,char *buffer)
     unsigned tblk;
     unsigned tlen;
     unsigned seg;
-    unsigned flag;
+//    unsigned flag;
     unsigned minage;
     unsigned mindex;
 
@@ -121,7 +129,8 @@ void scache_write(unsigned block,unsigned length,char *buffer)
 	    return;
 	}
 	// Update slot
-	SCache[seg][mindex].sect == block;
+//	SCache[seg][mindex].sect = block; // It should be this way. But if I make it this way, it doesn't work.
+//      SCache[seg][mindex].sect == block;// Compiler complains this is a statement without effect
 	SCache[seg][mindex].age = SCacheTime;
 	memcpy(SCache[seg][mindex].buff, buffer, SCACHE_BSZ);
 	buffer += SCACHE_BSZ;
@@ -153,8 +162,8 @@ unsigned phyio_init(int devlen,char *devnam,unsigned *handle,struct phyio_info *
     if (cp != NULL) *cp = '\0';
 
     /* try to open file without '/dev/' prefix */
-    vmsfd = open(devbuf,O_RDWR);
-    if (vmsfd < 0) vmsfd = open(devbuf,O_RDONLY);
+    vmsfd = open(devbuf,OPEN_RW_FLAGS);
+    if (vmsfd < 0) vmsfd = open(devbuf,OPEN_FLAGS);
 
     if (vmsfd < 0)
     {
@@ -162,8 +171,8 @@ unsigned phyio_init(int devlen,char *devnam,unsigned *handle,struct phyio_info *
         sprintf(devbuf,DEV_PREFIX,devnam);
         cp = strchr(devbuf,':');
         if (cp != NULL) *cp = '\0';
-        vmsfd = open(devbuf,O_RDWR);
-        if (vmsfd < 0) vmsfd = open(devbuf,O_RDONLY);
+        vmsfd = open(devbuf,OPEN_RW_FLAGS);
+        if (vmsfd < 0) vmsfd = open(devbuf,OPEN_FLAGS);
     }
     else
     {
@@ -185,25 +194,28 @@ unsigned phyio_close(unsigned handle)
     return SS$_NORMAL;
 }
 
-
 unsigned phyio_read(unsigned handle,unsigned block,unsigned length,char *buffer)
 {
-    int res;
+    off_t seekRes;
+    off_t seekByte;
+    unsigned int readRes;
 #ifdef DEBUG
     printf("Phyio read block: %d into %p (%d bytes)\n",block,buffer,length);
 #endif
     read_count++;
     if (scache_read(block,length,buffer)) {
-	return SS$_NORMAL;
+		return SS$_NORMAL;
     }
-    if ((res = lseek(handle,block*512,0)) < 0) {
+    seekByte = block*512LL;
+    if ((seekRes = lseek(handle,seekByte,SEEK_SET)) < 0) {
+		long long seekResLL = seekRes;	/* Keep the compiler from complaining about %ld vs %lld on PiOS*/
         perror("lseek ");
-	printf("lseek failed %d\n",res);
+		printf("lseek failed %lld\n",seekResLL);
         return SS$_PARITY;
     }
-    if ((res = read(handle,buffer,length)) != length) {
+    if ((readRes = read(handle,buffer,length)) != length) {
         perror("read ");
-	printf("read failed %d\n",res);
+		printf("read failed %d\n",readRes);
         return SS$_PARITY;
     }
     scache_write(block,length,buffer);
@@ -213,11 +225,16 @@ unsigned phyio_read(unsigned handle,unsigned block,unsigned length,char *buffer)
 
 unsigned phyio_write(unsigned handle,unsigned block,unsigned length,char *buffer)
 {
+    off_t seekRes;
+    off_t seekByte;
+
 #ifdef DEBUG
-    printf("Phyio write block: %d from %x (%d bytes)\n",block,buffer,length);
+    printf("Phyio write block: 0x%X bytes, block 0x%X from buffer %p\n", length, block, (void *)buffer);
 #endif
     write_count++;
-    if (lseek(handle,block*512,0) < 0) return SS$_PARITY;
+    seekByte = block*512LL;
+    seekRes = lseek(handle,seekByte,SEEK_SET);
+    if ( seekRes < 0) return SS$_PARITY;
     if (write(handle,buffer,length) != length) return SS$_PARITY;
     return SS$_NORMAL;
 }

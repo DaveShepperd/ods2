@@ -14,21 +14,21 @@
 
 #include "vmstime.h"
 
-#define RMS$_RTB 98728
-#define RMS$_EOF 98938
-#define RMS$_FNF 98962
-#define RMS$_NMF 99018
-#define RMS$_WCC 99050
-#define RMS$_BUG 99380
-#define RMS$_DIR 99532
-#define RMS$_ESS 99588
-#define RMS$_FNM 99628
-#define RMS$_IFI 99684
-#define RMS$_NAM 99804
-#define RMS$_RSS 99988
-#define RMS$_RSZ 100004
-#define RMS$_WLD 100164
-#define RMS$_DNF 114762
+#define RMS$_RTB 98728	/* Record too large for user's buffer */
+#define RMS$_EOF 98938	/* End of file */
+#define RMS$_FNF 98962	/* File not found */
+#define RMS$_NMF 99018	/* No matching file */
+#define RMS$_WCC 99050	/* Invalid wildcard context */
+#define RMS$_BUG 99380	/* Internal bug? */
+#define RMS$_DIR 99532	/* Bad directory syntax */
+#define RMS$_ESS 99588	/* Bad extension syntax */
+#define RMS$_FNM 99628	/* Bad filename syntax */
+#define RMS$_IFI 99684	/* Bad file index? */
+#define RMS$_NAM 99804	/* No filename provided */
+#define RMS$_RSS 99988	/* Filename size problem */
+#define RMS$_RSZ 100004	/* Bad output record size */
+#define RMS$_WLD 100164	/* Failed to find file via wildcard? */
+#define RMS$_DNF 114762	/* Directory not found */
 
 #define NAM$C_MAXRSS 255
 #define NAM$M_SYNCHK 1
@@ -40,19 +40,33 @@
 
 
 struct XABDAT {
-    void *xab$l_nxt;
-    int xab$b_cod;
-    int xab$w_rvn;
-    VMSTIME xab$q_bdt;
-    VMSTIME xab$q_cdt;
-    VMSTIME xab$q_edt;
-    VMSTIME xab$q_rdt;
+    void *xab$l_nxt;	// Pointer to next XAB struct
+    unsigned char xab$b_cod;	// Code ID'ing this struct as a XABDAT (preset to XAB$C_DAT)
+	unsigned char xab$b_bln;	// Block length
+    unsigned short xab$w_rvn;	// Number of times file opened for write
+    VMSTIME xab$q_bdt;	// Backup date
+    VMSTIME xab$q_cdt;	// Creation date
+    VMSTIME xab$q_edt;	// Expiration date
+    VMSTIME xab$q_rdt;	// Revision date
+	VMSTIME xab$q_acc;	// Last accessed time
+	VMSTIME xab$q_att;	// Last time file attributes modified
+	VMSTIME xab$q_mod;	// Last time file modified
 };
 
 #ifdef RMS$INITIALIZE
-struct XABDAT cc$rms_xabdat = {NULL,XAB$C_DAT,0,
-        VMSTIME_ZERO, VMSTIME_ZERO,
-        VMSTIME_ZERO, VMSTIME_ZERO};
+struct XABDAT cc$rms_xabdat = {
+	 NULL					// nxt
+	,XAB$C_DAT				// cod
+	,sizeof(struct XABDAT)	// bln
+	,0						// rvn
+    ,VMSTIME_ZERO			// bdt
+	,VMSTIME_ZERO			// cdt
+    ,VMSTIME_ZERO			// edt
+	,VMSTIME_ZERO			// rdt
+	,VMSTIME_ZERO			// acc
+	,VMSTIME_ZERO			// att
+	,VMSTIME_ZERO			// mod
+};
 #else
 extern struct XABDAT cc$rms_xabdat;
 #endif
@@ -60,22 +74,37 @@ extern struct XABDAT cc$rms_xabdat;
 
 
 struct XABFHC {
-    void *xab$l_nxt;
-    int xab$b_cod;
-    int xab$b_atr;
-    int xab$b_bkz;
-    int xab$w_dxq;
-    int xab$l_ebk;
-    int xab$w_ffb;
-    int xab$w_gbc;
-    int xab$l_hbk;
-    int xab$b_hsz;
-    int xab$w_lrl;
-    int xab$w_verlimit;
+    void *xab$l_nxt;				// Pointer to next XAB struct
+    unsigned char xab$b_cod;		// Code ID'ing this struct as a XABFHC (preset to XAB$C_FHC)
+	unsigned char xab$b_bln;		// length of this struct
+    unsigned char xab$b_atr;		// Record attributes (same as fab$b_rat)
+    unsigned char xab$b_bkz;		// Bucket size (same as fab$b_bsz)
+	unsigned char xab$b_hsz;		// Fixed length control header size (same as fab$b_fsz)
+    unsigned short xab$w_dxq;		// Default file extension quantity (same as fab$w_deq)
+	unsigned short xab$w_ffb;		// First free byte in end of file block
+	unsigned short xab$w_gbc;		// Default global buffer count
+	unsigned short xab$w_verlimit;	// Version limit for this file
+	unsigned short xab$w_lrl;		// Longest record length 
+    int xab$l_ebk;					// End of file block
+    int xab$l_hbk;					// Higest virtual block in file (same as fab$l_alq)
 };
 
 #ifdef RMS$INITIALIZE
-struct XABFHC cc$rms_xabfhc = {NULL,XAB$C_FHC,0,0,0,0,0,0,0,0,0,0};
+struct XABFHC cc$rms_xabfhc = {
+	 NULL						// Next
+	,XAB$C_FHC					// cod
+	,sizeof(struct XABFHC)		// bln
+	,0							// atr
+	,0							// bkz
+	,0							// hsz
+	,0							// dxq
+	,0							// ffb
+	,0							// gbc
+	,0							// verlimit
+	,0							// lrl
+	,0							// ebk
+	,0							// hbk
+};
 #else
 extern struct XABFHC cc$rms_xabfhc;
 #endif
@@ -135,23 +164,44 @@ struct NAM cc$rms_nam = {0,0,0,0,0,0,0,0,0,0,0,NULL,0,NULL,0,NULL,0,NULL,0,NULL,
 extern struct NAM cc$rms_nam;
 #endif
 
+/* Indicies in rab$w_rfa[] array*/
+#define RAB$C_SEQ 0	// 0 and 1 form a 32 bit block number
+#define RAB$C_RFA 2	// index into block for next record to get
 
-#define RAB$C_SEQ 0
-#define RAB$C_RFA 2
+/* Flags found in rab$w_flg */
+#define RAB$M_BIN 		 0x0001	/* Read record strictly as binary. Ignore VAR/VFC/STREAM formatting */
+#define RAB$M_VFC 		 0x0002	/* Do VFC record header and trailer processing on VFC records else just normal newline */
+#define RAB$M_RAT 		 0x0004	/* Do record header and trailer processing according to fab$b_rfm and fab$b_rat */
+#define RAB$M_FAL		 0x0008	/* Continue reading file on record count error. Set RAB$M_RCE and rab$l_tot becomes frozen at that place */
+#define RAB$M_RCE		 0x0010	/* Set in rab$w_flg by sys_get() when record count error found. Rest of file is plain binary */
+#define RAB$M_BUF_SHARED 0x0020	/* Record header and trailer shared with ubf */
+#define RAB$M_CRLF		 0x0040	/* Terminate records with crlf instead of just nl */
+#define RAB$M_RETRY		 0x0080	/* Retry the file read/write but in binary */
+#define RAB$M_NOTAG		 0x0100	/* Do not rename output file */
+/*#define RAB$M_VARMRS	 0x0200    Record MRS in VAR type records (Too complicated for little gain. Never mind) */
+
+#define MAX_RMSREC 32767
 
 struct RAB {
-    struct FAB *rab$l_fab;
-    char *rab$l_ubf;
-    char *rab$l_rhb;
-    char *rab$l_rbf;
-    unsigned rab$w_usz;
-    unsigned rab$w_rsz;
-    int rab$b_rac;
-    unsigned short rab$w_rfa[3];
+    struct FAB *rab$l_fab;		/* Pointer to file's FAB */
+	unsigned char *rab$l_rhb;	/* Pointer to place VFC bytes if there are any (should always be set to what's in ubf-2) */
+    unsigned char *rab$l_ubf;	/* Pointer to buffer into which to read record */
+    unsigned char *rab$l_rbf;	/* Pointer to buffer to write */
+	unsigned int rab$l_tot;		/* total bytes read from file so far. */
+    unsigned short rab$w_usz;	/* Size of ubf buffer (make sure it's always at least MAXREC+128+2 bytes) */
+    unsigned short rab$w_rsz;	/* Number of bytes read or number of bytes to write */
+	unsigned short rab$w_eor;	/* index into ubf where eor chars are stored */
+    unsigned short rab$w_flg;		/* Custom record processing flag(s) */
+	unsigned short rab$w_tmpmrs;	/* Temporary holder for mrs calculations */
+    unsigned short rab$w_rfa[3];	/* Where in file next byte is to be fetches */
+	unsigned char rab$b_rhbSiz;	/* Size of rhb buffer (should always be set to 2) */
+	unsigned char rab$b_vfcs;	/* Number of vfc bytes discovered */
+	unsigned char rab$b_horBytes; /* Number of head of record bytes (those put in rhb) */
+	unsigned char rab$b_eorBytes; /* Number of end of record bytes placed in ubf */
 };
 
 #ifdef RMS$INITIALIZE
-struct RAB cc$rms_rab = {NULL,NULL,NULL,NULL,0,0,0,{0,0,0}};
+struct RAB cc$rms_rab = {NULL,NULL,NULL,NULL,0,0,0,0,0,0,{0,0,0},0,0,0,0};
 #else
 extern struct RAB cc$rms_rab;
 #endif
@@ -167,6 +217,7 @@ extern struct RAB cc$rms_rab;
 #define FAB$M_CR  2
 #define FAB$M_PRN 4
 #define FAB$M_BLK 8
+#define PRINT_ATTR (FAB$M_CR | FAB$M_PRN | FAB$M_FTN)
 
 #define FAB$M_PUT 0x1
 #define FAB$M_GET 0x2
@@ -212,6 +263,12 @@ struct FAB cc$rms_fab = {NULL,0,NULL,NULL,0,0,0,0,0,0,0,0,0,0,0,0,0,NULL};
 extern struct FAB cc$rms_fab;
 #endif
 
+#define CMD_VERBOSE_DIR	(0x0001)	/* Directory operations */
+#define CMD_VERBOSE_RD	(0x0002)	/* Read operations */
+#define CMD_VERBOSE_WR	(0x0004)	/* Write operations */
+#define CMD_VERBOSE_FN	(0x0008)	/* Filename parsing */
+#define CMD_VERBOSE_MAX	(0x0010)	/* Maximum flag */
+extern int cmdVerbose;
 
 #ifndef NO_DOLLAR
 #define sys$search      sys_search
@@ -241,4 +298,7 @@ unsigned sys_erase(struct FAB *fab);
 unsigned sys_extend(struct FAB *fab);
 unsigned sys_setddir(struct dsc_descriptor *newdir,unsigned short *oldlen,
                      struct dsc_descriptor *olddir);
+void sys_error_str(int rmsSts, char *dest, int destLen);
+char *sys_getFileName(const struct FAB *fab, char *dest, int destLen);
+
 #endif
